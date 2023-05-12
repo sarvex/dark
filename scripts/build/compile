@@ -91,24 +91,19 @@ def copy_static():
 
 def copy_dark_wasm():
   start = time.time()
-  if optimize:
-    dark_wasm = run_backend(
-        start,
-        "rsync -a backend/Build/out/Wasm/Release/net7.0/publish/wwwroot/ backend/static/dark_wasm/"
-    )
-  else:
-    dark_wasm = run_backend(
-        start,
-        "rsync -a backend/Build/out/Wasm/Debug/net7.0/wwwroot/ backend/static/dark_wasm/"
-    )
-  return dark_wasm
+  return (run_backend(
+      start,
+      "rsync -a backend/Build/out/Wasm/Release/net7.0/publish/wwwroot/ backend/static/dark_wasm/",
+  ) if optimize else run_backend(
+      start,
+      "rsync -a backend/Build/out/Wasm/Debug/net7.0/wwwroot/ backend/static/dark_wasm/",
+  ))
 
 
 def client_build():
   start = time.time()
   build = "./scripts/build/_npm-run-build-with-retry"
-  result = run_frontend(start, build)
-  return result
+  return run_frontend(start, build)
 
 
 def npm_install():
@@ -119,20 +114,17 @@ def npm_install():
 
 def shellcheck(f):
   start = time.time()
-  result = run_backend(start, "scripts/linting/shellchecker " + f)
-  return result
+  return run_backend(start, f"scripts/linting/shellchecker {f}")
 
 
 def yamllint(f):
   start = time.time()
-  result = run_backend(start, "scripts/linting/yamllinter " + f)
-  return result
+  return run_backend(start, f"scripts/linting/yamllinter {f}")
 
 
 def terraform_validate():
   start = time.time()
-  result = run_backend(start, "cd tf && terraform validate")
-  return result
+  return run_backend(start, "cd tf && terraform validate")
 
 
 def circleci_validate():
@@ -148,10 +140,7 @@ def circleci_validate():
 def backend_test():
   start = time.time()
   ci = "--verbosity detailed" if in_ci else "--verbosity normal"
-  if optimize:
-    configuration = " --published"
-  else:
-    configuration = ""
+  configuration = " --published" if optimize else ""
   build = f"scripts/run-backend-tests {configuration}"
   return run_test(start, build)
 
@@ -202,13 +191,12 @@ def backend_quick_build():
   start = time.time()
   if optimize:
     configuration = "Release"
-    verbosity = "minimal"
     command = "publish"
   else:
     configuration = "Debug"
-    verbosity = "minimal"
     command = "build"
 
+  verbosity = "minimal"
   build = f"./scripts/build/_dotnet-wrapper {command} \
       /clp:ForceConsoleColor \
       --no-restore \
@@ -216,39 +204,31 @@ def backend_quick_build():
       --configuration {configuration} \
       fsdark.sln"
 
-  result = run_backend(start, build)
-
-  return result
+  return run_backend(start, build)
 
 
 def backend_full_build():
   start = time.time()
   if optimize:
     configuration = "Release"
-    verbosity = "minimal"
     command = "publish"
   else:
     configuration = "Debug"
-    verbosity = "minimal"
     command = "build"
 
+  verbosity = "minimal"
   build = f"./scripts/build/_dotnet-wrapper {command} \
       /clp:ForceConsoleColor \
       --verbosity {verbosity} \
       --configuration {configuration} \
       fsdark.sln"
 
-  result = run_backend(start, build)
-
-  return result
+  return run_backend(start, build)
 
 
 def reload_backend_server():
   start = time.time()
-  if optimize:
-    configuration = " --published"
-  else:
-    configuration = ""
+  configuration = " --published" if optimize else ""
   runserver = f"scripts/run-backend-server {configuration}"
   return run_backend(start, runserver)
 
@@ -294,35 +274,29 @@ def execute(should):
     should.backend_test |= success
     should.reload_backend_server |= success
 
-  if should.circleci_validate:
-    if not circleci_validate(): success = False
-
+  if should.circleci_validate and not circleci_validate():
+    success = False
   if should.backend_quick_build:
     if not backend_quick_build(): success = False
     should.copy_dark_wasm |= success
     should.backend_test |= success
     should.reload_backend_server |= success
 
-  if should.copy_dark_wasm:
-    if not copy_dark_wasm(): success = False
+  if should.copy_dark_wasm and not copy_dark_wasm():
+    success = False
+  if should.reload_backend_server and not reload_backend_server():
+    success = False
+  if should.backend_test and not backend_test():
+    success = False
+  if should.shellcheck != [] and not all(
+      shellcheck(f) for f in should.shellcheck):
+    success = False
 
-  if should.reload_backend_server:
-    if not reload_backend_server(): success = False
+  if should.yamllint and not all(yamllint(f) for f in should.yamllint):
+    success = False
 
-  if should.backend_test:
-    if not backend_test(): success = False
-
-  if should.shellcheck != []:
-    if not all([shellcheck(f) for f in should.shellcheck]):
-      success = False
-
-  if should.yamllint:
-    if not all([yamllint(f) for f in should.yamllint]):
-      success = False
-
-  if should.terraform_validate:
-    if not terraform_validate(): success = False
-
+  if should.terraform_validate and not terraform_validate():
+    success = False
   return success
 
 
@@ -370,7 +344,7 @@ def mark(should, f):
     should.yamllint += [f]
 
   else:
-    print("non-build file: " + f, end='')
+    print(f"non-build file: {f}", end='')
 
   return should
 
@@ -395,16 +369,10 @@ def ignore(filename):
       ".md",
       ".sw",
   ]
-  for i in ignores:
-    if i in filename:
-      return True
-  # emacs thing
-  if "/.#" in filename:
-    return True
-  # vim thing
-  if filename[-1] == "~":
-    return True
-  return False
+  return next(
+      (True for i in ignores if i in filename),
+      True if "/.#" in filename else filename[-1] == "~",
+  )
 
 
 files = []

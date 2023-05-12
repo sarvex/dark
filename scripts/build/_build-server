@@ -44,7 +44,7 @@ sys.stdout.writelines = flush(sys.stdout.writelines)
 
 def run_or_fail(bash):
   if not run(bash):
-    print("Failed during call: " + bash)
+    print(f"Failed during call: {bash}")
     sys.exit(-1)
 
 
@@ -69,11 +69,10 @@ def compile(files):
 
 
 def run_backend_server():
-  exit = compile(["scripts/run-backend-server"])
   print("--------------------------")
   print("-- Started server ")
   print("--------------------------")
-  return exit
+  return compile(["scripts/run-backend-server"])
 
 
 def background_task(fn, name):
@@ -146,7 +145,7 @@ def main():
   if should_watch:
     import watchfiles
     ignored = [ ".git", "backend/Build" ]
-    ignored = set(["/home/dark/app/" + f for f in ignored])
+    ignored = {f"/home/dark/app/{f}" for f in ignored}
     filter = watchfiles.DefaultFilter(ignore_paths=ignored)
     for changes in watchfiles.watch("/home/dark/app/", watch_filter=filter):
       changes = [f for (_, f) in changes]
